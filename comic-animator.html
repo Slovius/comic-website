@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instant Comic Book Animator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --panel-border: #1a1a1a;
+      --halftone-color: rgba(0, 0, 0, 0.08);
+      --accent-red: #e63946;
+      --accent-yellow: #f4d35e;
+      --accent-blue: #457b9d;
+      --paper-bg: #fdf6e3;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Comic Neue', cursive, sans-serif;
+      background-color: var(--paper-bg);
+      background-image: 
+        radial-gradient(circle at 1px 1px, var(--halftone-color) 1px, transparent 0),
+        radial-gradient(circle at 2px 2px, var(--halftone-color) 1px, transparent 0);
+      background-size: 4px 4px;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+      position: relative;
+    }
+
+    .header h1 {
+      font-family: 'Bangers', cursive;
+      font-size: clamp(2rem, 5vw, 4rem);
+      color: var(--panel-border);
+      text-shadow: 3px 3px 0 var(--accent-yellow), 6px 6px 0 rgba(0,0,0,0.1);
+      letter-spacing: 2px;
+      transform: rotate(-2deg);
+      display: inline-block;
+    }
+
+    .header p {
+      font-size: 1.1rem;
+      color: #555;
+      margin-top: 8px;
+    }
+
+    /* Toolbar */
+    .toolbar {
+      background: white;
+      border: 3px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 15px 20px;
+      margin-bottom: 25px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 4px 4px 0 rgba(0,0,0,0.15);
+    }
+
+    .toolbar-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 0 12px;
+      border-right: 2px dashed #ccc;
+    }
+
+    .toolbar-group:last-child { border-right: none; }
+
+    .toolbar label {
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--panel-border);
+    }
+
+    .btn {
+      font-family: 'Bangers', cursive;
+      font-size: 1.1rem;
+      padding: 8px 16px;
+      border: 3px solid var(--panel-border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      position: relative;
+    }
+
+    .btn:hover { transform: translateY(-2px); box-shadow: 3px 3px 0 rgba(0,0,0,0.2); }
+    .btn:active { transform: translateY(0); box-shadow: none; }
+
+    .btn-primary { background: var(--accent-red); color: white; }
+    .btn-secondary { background: var(--accent-yellow); color: var(--panel-border); }
+    .btn-tertiary { background: var(--accent-blue); color: white; }
+    .btn-small { font-size: 0.9rem; padding: 5px 10px; }
+
+    input[type="color"] {
+      width: 40px;
+      height: 36px;
+      border: 2px solid var(--panel-border);
+      border-radius: 6px;
+      cursor: pointer;
+      padding: 2px;
+    }
+
+    input[type="range"] {
+      width: 80px;
+      accent-color: var(--accent-red);
+    }
+
+    /* Comic Page */
+    .comic-page {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border: 5px solid var(--panel-border);
+      border-radius: 4px;
+      padding: 15px;
+      box-shadow: 8px 8px 0 rgba(0,0,0,0.2);
+    }
+
+    .comic-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    @media (max-width: 768px) {
+      .comic-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 480px) {
+      .comic-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Panel */
+    .panel {
+      position: relative;
+      border: 4px solid var(--panel-border);
+      border-radius: 3px;
+      background: white;
+      aspect-ratio: 4/3;
+      overflow: hidden;
+      cursor: crosshair;
+      transition: box-shadow 0.2s ease;
+    }
+
+    .panel:hover { box-shadow: inset 0 0 20px rgba(0,0,0,0.1); }
+
+    .panel canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .panel-image {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+
+    .panel.has-image canvas.drawing-canvas { z-index: 2; }
+    .panel.has-image .panel-image { display: block; z-index: 1; }
+
+    /* Panel overlay controls */
+    .panel-controls {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      z-index: 10;
+    }
+
+    .panel:hover .panel-controls { opacity: 1; }
+
+    .panel-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid var(--panel-border);
+      background: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all 0.15s ease;
+    }
+
+    .panel-btn:hover { transform: scale(1.1); background: var(--accent-yellow); }
+
+    /* Speech Bubble */
+    .speech-bubble {
+      position: absolute;
+      background: white;
+      border: 3px solid var(--panel-border);
+      border-radius: 50%;
+      padding: 8px 12px;
+      font-family: 'Comic Neue', cursive;
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: var(--panel-border);
+      min-width: 60px;
+      max-width: 180px;
+      text-align: center;
+      z-index: 5;
+      cursor: move;
+      box-shadow: 2px 2px 0 rgba(0,0,0,0.1);
+    }
+
+    .speech-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 10px solid transparent;
+      border-right: 10px solid transparent;
+      border-top: 12px solid var(--panel-border);
+    }
+
+    .speech-bubble::before {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 9px solid white;
+    }
+
+    .speech-bubble[contenteditable="true"]:focus {
+      outline: 3px dashed var(--accent-blue);
+      background: #f0f8ff;
+    }
+
+    /* Caption Box */
+    .caption-box {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      right: 5px;
+      background: var(--accent-yellow);
+      border: 3px solid var(--panel-border);
+      padding: 6px 10px;
+      font-family: 'Comic Neue', cursive;
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: var(--panel-border);
+      z-index: 5;
+      cursor: move;
+    }
+
+    .caption-box[contenteditable="true"]:focus {
+      outline: 3px dashed var(--accent-blue);
+    }
+
+    /* Sound Effect Badge */
+    .sfx-badge {
+      position: absolute;
+      font-family: 'Bangers', cursive;
+      font-size: 2rem;
+      color: white;
+      text-shadow: 2px 2px 0 var(--panel-border), -1px -1px 0 var(--panel-border);
+      z-index: 6;
+      cursor: move;
+      transform: rotate(-5deg);
+      user-select: none;
+    }
+
+    .sfx-badge.pink { color: #ff69b4; }
+    .sfx-badge.orange { color: #ff8c00; }
+    .sfx-badge.green { color: #32cd32; }
+
+    /* Animation overlay */
+    .animation-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    /* Animations */
+    @keyframes kenburns {
+      0% { transform: scale(1) translate(0, 0); }
+      50% { transform: scale(1.1) translate(-2%, -2%); }
+      100% { transform: scale(1) translate(0, 0); }
+    }
+
+    @keyframes lineboil {
+      0% { transform: translate(0, 0); }
+      25% { transform: translate(-1px, 1px); }
+      50% { transform: translate(1px, -1px); }
+      75% { transform: translate(-1px, -1px); }
+      100% { transform: translate(0, 0); }
+    }
+
+    @keyframes screenshake {
+      0%, 100% { transform: translate(0, 0); }
+      10% { transform: translate(-3px, 2px); }
+      20% { transform: translate(3px, -2px); }
+      30% { transform: translate(-2px, -3px); }
+      40% { transform: translate(2px, 3px); }
+      50% { transform: translate(-3px, -1px); }
+      60% { transform: translate(3px, 1px); }
+      70% { transform: translate(-1px, 3px); }
+      80% { transform: translate(1px, -3px); }
+      90% { transform: translate(-2px, 2px); }
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: inset 0 0 0 rgba(255, 255, 0, 0); }
+      50% { box-shadow: inset 0 0 30px rgba(255, 255, 0, 0.4); }
+    }
+
+    .panel.animating-kenburns canvas,
+    .panel.animating-kenburns .panel-image {
+      animation: kenburns 4s ease-in-out infinite;
+    }
+
+    .panel.animating-lineboil canvas {
+      animation: lineboil 0.15s steps(2) infinite;
+    }
+
+    .panel.animating-shake {
+      animation: screenshake 0.5s ease-in-out;
+    }
+
+    .panel.animating-pulse {
+      animation: pulse-glow 1s ease-in-out infinite;
+    }
+
+    /* Drop zone highlight */
+    .panel.drag-over {
+      outline: 4px dashed var(--accent-blue);
+      background: rgba(69, 123, 157, 0.1);
+    }
+
+    /* Status bar */
+    .status-bar {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.9rem;
+      color: #666;
+      min-height: 24px;
+    }
+
+    /* Modal for animation settings */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .modal {
+      background: white;
+      border: 4px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 25px;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 8px 8px 0 rgba(0,0,0,0.3);
+    }
+
+    .modal h2 {
+      font-family: 'Bangers', cursive;
+      font-size: 1.8rem;
+      margin-bottom: 15px;
+      color: var(--panel-border);
+    }
+
+    .modal-close {
+      float: right;
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: #999;
+    }
+
+    .modal-close:hover { color: var(--accent-red); }
+
+    /* Export progress */
+    .export-progress {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: white;
+      border: 3px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 15px;
+      z-index: 50;
+      box-shadow: 4px 4px 0 rgba(0,0,0,0.2);
+    }
+
+    .export-progress.active { display: block; }
+
+    .progress-bar {
+      width: 200px;
+      height: 12px;
+      background: #eee;
+      border-radius: 6px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--accent-red);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <h1>⚡ Instant Comic Book Animator ⚡</h1>
+    <p>Draw, upload, caption, and bring your comic to life — completely free!</p>
+  </header>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <label for="brush-color">🎨 Color:</label>
+      <input type="color" id="brush-color" value="#1a1a1a">
+      <label for="brush-size">Size:</label>
+      <input type="range" id="brush-size" min="1" max="30" value="5">
+    </div>
+
+    <div class="toolbar-group">
+      <button class="btn btn-secondary btn-small" id="tool-brush">✏️ Brush</button>
+      <button class="btn btn-secondary btn-small" id="tool-eraser">🧽 Eraser</button>
+      <button class="btn btn-secondary btn-small" id="clear-all">🗑️ Clear All</button>
+    </div>
+
+    <div class="toolbar-group">
+      <button class="btn btn-primary" id="bring-to-life">✨ Bring to Life!</button>
+      <button class="btn btn-tertiary" id="stop-animation">⏹️ Stop</button>
+    </div>
+
+    <div class="toolbar-group">
+      <button class="btn btn-secondary" id="export-png">📸 Save PNG</button>
+      <button class="btn btn-primary" id="export-video">🎬 Export Video</button>
+    </div>
+  </div>
+
+  <!-- Comic Page -->
+  <div class="comic-page">
+    <div class="comic-grid" id="comic-grid">
+      <!-- Panels generated by JS -->
+    </div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar" id="status-bar">Ready to create! Draw in any panel or drop an image.</div>
+
+  <!-- Animation Settings Modal -->
+  <div class="modal-overlay" id="animation-modal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeAnimationModal()">✕</button>
+      <h2>🎬 Animation Effects</h2>
+      <p style="margin-bottom: 15px;">Choose effects to apply to all panels:</p>
+      
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" id="anim-kenburns" checked> 
+          <span><strong>Cinematic Zoom</strong> — Slow Ken Burns pan & zoom</span>
+        </label>
+        
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" id="anim-lineboil"> 
+          <span><strong>Line Boil</strong> — Classic hand-drawn wobble effect</span>
+        </label>
+        
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" id="anim-shake"> 
+          <span><strong>Screen Shake</strong> — Impactful rumble on start</span>
+        </label>
+        
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" id="anim-pulse"> 
+          <span><strong>Pulsing Glow</strong> — Energy aura around panels</span>
+        </label>
+
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" id="anim-sfx" checked> 
+          <span><strong>Sound Effects</strong> — Play comic audio cues</span>
+        </label>
+      </div>
+
+      <button class="btn btn-primary" style="margin-top: 20px; width: 100%;" onclick="applyAnimations()">
+        🚀 Apply & Animate!
+      </button>
+    </div>
+  </div>
+
+  <!-- Export Progress -->
+  <div class="export-progress" id="export-progress">
+    <strong>Exporting...</strong>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // COMIC BOOK ANIMATOR - Complete Application
+    // ==========================================
+
+    const PANEL_COUNT = 6;
+    let panels = [];
+    let currentTool = 'brush';
+    let isDrawing = false;
+    let lastPos = { x: 0, y: 0 };
+    let audioCtx = null;
+
+    // Initialize comic grid
+    function initComicGrid() {
+      const grid = document.getElementById('comic-grid');
+      
+      for (let i = 0; i < PANEL_COUNT; i++) {
+        const panel = createPanel(i);
+        panels.push(panel);
+        grid.appendChild(panel.element);
+      }
+    }
+
+    function createPanel(index) {
+      const element = document.createElement('div');
+      element.className = 'panel';
+      element.dataset.index = index;
+
+      // Drawing canvas
+      const canvas = document.createElement('canvas');
+      canvas.className = 'drawing-canvas';
+      canvas.width = 400;
+      canvas.height = 300;
+      element.appendChild(canvas);
+
+      // Image layer
+      const img = document.createElement('img');
+      img.className = 'panel-image';
+      img.draggable = false;
+      element.appendChild(img);
+
+      // Animation overlay canvas (for particles)
+      const animCanvas = document.createElement('canvas');
+      animCanvas.className = 'animation-overlay';
+      animCanvas.width = 400;
+      animCanvas.height = 300;
+      element.appendChild(animCanvas);
+
+      // Panel controls
+      const controls = document.createElement('div');
+      controls.className = 'panel-controls';
+      
+      const addBubbleBtn = createPanelButton('💬', `Add speech bubble to panel ${index + 1}`, () => {
+        addSpeechBubble(index);
+      });
+      
+      const addCaptionBtn = createPanelButton('📝', `Add caption to panel ${index + 1}`, () => {
+        addCaptionBox(index);
+      });
+
+      const addSfxBtn = createPanelButton('💥', `Add sound effect to panel ${index + 1}`, () => {
+        addSoundEffect(index);
+      });
+
+      controls.appendChild(addBubbleBtn);
+      controls.appendChild(addCaptionBtn);
+      controls.appendChild(addSfxBtn);
+      element.appendChild(controls);
+
+      // Setup canvas context
+      const ctx = canvas.getContext('2d');
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Event listeners for drawing
+      setupDrawingEvents(element, canvas, ctx);
+      
+      // Drag and drop
+      setupDragDrop(element, img, index);
+
+      return {
+        element,
+        canvas,
+        ctx,
+        animCanvas,
+        animCtx: animCanvas.getContext('2d'),
+        image: img,
+        hasImage: false,
+        bubbles: [],
+        captions: [],
+        sfx: []
+      };
+    }
+
+    function createPanelButton(icon, title, onClick) {
+      const btn = document.createElement('button');
+      btn.className = 'panel-btn';
+      btn.textContent = icon;
+      btn.title = title;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onClick();
+      });
+      return btn;
+    }
+
+    // Drawing functionality
+    function setupDrawingEvents(panelEl, canvas, ctx) {
+      panelEl.addEventListener('mousedown', startDraw);
+      panelEl.addEventListener('mousemove', draw);
+      panelEl.addEventListener('mouseup', endDraw);
+      panelEl.addEventListener('mouseleave', endDraw);
+      
+      // Touch support
+      panelEl.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        startDraw({ target: canvas, offsetX: touch.clientX - canvas.getBoundingClientRect().left, offsetY: touch.clientY - canvas.getBoundingClientRect().top });
+      });
+      
+      panelEl.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        draw({ target: canvas, offsetX: touch.clientX - canvas.getBoundingClientRect().left, offsetY: touch.clientY - canvas.getBoundingClientRect().top });
+      });
+      
+      panelEl.addEventListener('touchend', endDraw);
+
+      function startDraw(e) {
+        if (e.target.closest('.panel-controls') || e.target.classList.contains('speech-bubble') || 
+            e.target.classList.contains('caption-box') || e.target.classList.contains('sfx-badge')) return;
+        
+        isDrawing = true;
+        const rect = canvas.getBoundingClientRect();
+        lastPos.x = (e.offsetX / rect.width) * canvas.width;
+        lastPos.y = (e.offsetY / rect.height) * canvas.height;
+      }
+
+      function draw(e) {
+        if (!isDrawing) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.offsetX / rect.width) * canvas.width;
+        const y = (e.offsetY / rect.height) * canvas.height;
+
+        ctx.beginPath();
+        ctx.moveTo(lastPos.x, lastPos.y);
+        ctx.lineTo(x, y);
+
+        if (currentTool === 'brush') {
+          ctx.strokeStyle = document.getElementById('brush-color').value;
+          ctx.lineWidth = parseInt(document.getElementById('brush-size').value);
+        } else {
+          ctx.globalCompositeOperation = 'destination-out';
+          ctx.lineWidth = parseInt(document.getElementById('brush-size').value) * 2;
+        }
+
+        ctx.stroke();
+        
+        if (currentTool === 'eraser') {
+          ctx.globalCompositeOperation = 'source-over';
+        }
+
+        lastPos.x = x;
+        lastPos.y = y;
+      }
+
+      function endDraw() {
+        isDrawing = false;
+      }
+    }
+
+    // Drag and drop image support
+    function setupDragDrop(panelEl, img, index) {
+      panelEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        panelEl.classList.add('drag-over');
+      });
+
+      panelEl.addEventListener('dragleave', () => {
+        panelEl.classList.remove('drag-over');
+      });
+
+      panelEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        panelEl.classList.remove('drag-over');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type.startsWith('image/')) {
+          loadImageIntoPanel(files[0], img, index);
+        }
+      });
+
+      // Click to upload fallback
+      panelEl.addEventListener('dblclick', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = (e) => {
+          if (e.target.files.length > 0) {
+            loadImageIntoPanel(e.target.files[0], img, index);
+          }
+        };
+        input.click();
+      });
+    }
+
+    function loadImageIntoPanel(file, img, index) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.src = e.target.result;
+        panels[index].hasImage = true;
+        panels[index].element.classList.add('has-image');
+        playSound('pop');
+        updateStatus(`Image loaded into panel ${index + 1}`);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Speech bubbles
+    function addSpeechBubble(panelIndex) {
+      const panel = panels[panelIndex];
+      const bubble = document.createElement('div');
+      bubble.className = 'speech-bubble';
+      bubble.contentEditable = true;
+      bubble.textContent = 'Hello!';
+      bubble.style.left = '30%';
+      bubble.style.top = '20%';
+      
+      panel.element.appendChild(bubble);
+      panel.bubbles.push(bubble);
+      
+      makeDraggable(bubble, panel.element);
+      playSound('pop');
+      updateStatus(`Speech bubble added to panel ${panelIndex + 1}`);
+    }
+
+    // Caption boxes
+    function addCaptionBox(panelIndex) {
+      const panel = panels[panelIndex];
+      const caption = document.createElement('div');
+      caption.className = 'caption-box';
+      caption.contentEditable = true;
+      caption.textContent = 'Meanwhile, back at the cave...';
+      
+      panel.element.appendChild(caption);
+      panel.captions.push(caption);
+      
+      makeDraggable(caption, panel.element);
+      playSound('pop');
+      updateStatus(`Caption added to panel ${panelIndex + 1}`);
+    }
+
+    // Sound effect badges
+    function addSoundEffect(panelIndex) {
+      const panel = panels[panelIndex];
+      const sfxTexts = ['POW!', 'ZAP!', 'BOOM!', 'WHAM!', 'CRASH!', 'BANG!'];
+      const colors = ['', 'pink', 'orange', 'green'];
+      
+      const badge = document.createElement('div');
+      badge.className = `sfx-badge ${colors[Math.floor(Math.random() * colors.length)]}`;
+      badge.textContent = sfxTexts[Math.floor(Math.random() * sfxTexts.length)];
+      badge.style.left = `${20 + Math.random() * 40}%`;
+      badge.style.top = `${30 + Math.random() * 30}%`;
+      
+      panel.element.appendChild(badge);
+      panel.sfx.push(badge);
+      
+      makeDraggable(badge, panel.element);
+      playSound('pow');
+      updateStatus(`Sound effect added to panel ${panelIndex + 1}`);
+    }
+
+    // Make elements draggable within their container
+    function makeDraggable(element, container) {
+      let isDragging = false;
+      let startX, startY, origLeft, origTop;
+
+      element.addEventListener('mousedown', (e) => {
+        if (element.contentEditable === 'true' && document.activeElement === element) return;
+        
+        isDragging = true;
+        const rect = container.getBoundingClientRect();
+        startX = e.clientX - rect.left;
+        startY = e.clientY - rect.top;
+        origLeft = parseInt(element.style.left) || 0;
+        origTop = parseInt(element.style.top) || 0;
+        element.style.zIndex = 20;
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        
+        const rect = container.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        element.style.left = `${origLeft + (x - startX)}px`;
+        element.style.top = `${origTop + (y - startY)}px`;
+      });
+
+      document.addEventListener('mouseup', () => {
+        isDragging = false;
+        element.style.zIndex = '';
+      });
+    }
+
+    // Web Audio API Sound Effects
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+
+    function playSound(type) {
+      try {
+        initAudio();
+        
+        switch (type) {
+          case 'pop':
+            playPop();
+            break;
+          case 'pow':
+            playPow();
+            break;
+          case 'zap':
+            playZap();
+            break;
+          case 'boom':
+            playBoom();
+            break;
+        }
+      } catch (e) {
+        console.log('Audio error:', e);
+      }
+    }
+
+    function playPop() {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.1);
+      
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+      
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.1);
+    }
+
+    function playPow() {
+      // Low thump
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.2);
+      
+      gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+      
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+
+      // Noise burst
+      const bufferSize = audioCtx.sampleRate * 0.1;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * 0.3;
+      }
+      
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+      noiseGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+      
+      noise.connect(noiseGain).connect(audioCtx.destination);
+      noise.start();
+    }
+
+    function playZap() {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(2000, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.15);
+      
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+      
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.2);
+    }
+
+    function playBoom() {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(80, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + 0.5);
+      
+      gain.gain.setValueAtTime(0.6, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+      
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.6);
+    }
+
+    // Animation Engine
+    function openAnimationModal() {
+      document.getElementById('animation-modal').classList.add('active');
+    }
+
+    function closeAnimationModal() {
+      document.getElementById('animation-modal').classList.remove('active');
+    }
+
+    let animationInterval = null;
+    let particleAnimations = [];
+
+    function applyAnimations() {
+      const kenburns = document.getElementById('anim-kenburns').checked;
+      const lineboil = document.getElementById('anim-lineboil').checked;
+      const shake = document.getElementById('anim-shake').checked;
+      const pulse = document.getElementById('anim-pulse').checked;
+      const sfxEnabled = document.getElementById('anim-sfx').checked;
+
+      // Stop previous animations
+      stopAllAnimations();
+
+      panels.forEach((panel, index) => {
+        panel.element.classList.remove(
+          'animating-kenburns', 'animating-lineboil', 
+          'animating-shake', 'animating-pulse'
+        );
+
+        if (kenburns) panel.element.classList.add('animating-kenburns');
+        if (lineboil) panel.element.classList.add('animating-lineboil');
+        if (pulse) panel.element.classList.add('animating-pulse');
+        
+        // Screen shake with delay for dramatic effect
+        if (shake) {
+          setTimeout(() => {
+            panel.element.classList.add('animating-shake');
+            if (sfxEnabled && index === 0) playSound('boom');
+            
+            setTimeout(() => {
+              panel.element.classList.remove('animating-shake');
+            }, 500);
+          }, index * 200);
+        }
+
+        // Particle effects on panels with sound effect badges
+        if (panel.sfx.length > 0) {
+          startParticleAnimation(panel, sfxEnabled ? 'zap' : null);
+        }
+      });
+
+      closeAnimationModal();
+      
+      if (sfxEnabled) {
+        setTimeout(() => playSound('pow'), 300);
+      }
+      
+      updateStatus('✨ Comic is alive! Animations running...');
+    }
+
+    function startParticleAnimation(panel, soundType) {
+      const ctx = panel.animCtx;
+      let particles = [];
+      
+      for (let i = 0; i < 20; i++) {
+        particles.push({
+          x: Math.random() * panel.animCanvas.width,
+          y: Math.random() * panel.animCanvas.height,
+          vx: (Math.random() - 0.5) * 3,
+          vy: (Math.random() - 0.5) * 3,
+          size: Math.random() * 4 + 1,
+          color: `hsl(${Math.random() * 60 + 20}, 100%, 60%)`
+        });
+      }
+
+      function animateParticles() {
+        ctx.clearRect(0, 0, panel.animCanvas.width, panel.animCanvas.height);
+        
+        particles.forEach(p => {
+          p.x += p.vx;
+          p.y += p.vy;
+          
+          if (p.x < 0 || p.x > panel.animCanvas.width) p.vx *= -1;
+          if (p.y < 0 || p.y > panel.animCanvas.height) p.vy *= -1;
+          
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fillStyle = p.color;
+          ctx.fill();
+        });
+      }
+
+      const interval = setInterval(animateParticles, 33);
+      particleAnimations.push({ panelIndex: panels.indexOf(panel), interval });
+    }
+
+    function stopAllAnimations() {
+      panels.forEach(panel => {
+        panel.element.classList.remove(
+          'animating-kenburns', 'animating-lineboil', 
+          'animating-shake', 'animating-pulse'
+        );
+        panel.animCtx.clearRect(0, 0, panel.animCanvas.width, panel.animCanvas.height);
+      });
+
+      particleAnimations.forEach(pa => clearInterval(pa.interval));
+      particleAnimations = [];
+    }
+
+    // Export PNG
+    async function exportPNG() {
+      updateStatus('Generating high-res PNG...');
+      
+      try {
+        const pageWidth = 1200;
+        const pageHeight = 900;
+        
+        const exportCanvas = document.createElement('canvas');
+        exportCanvas.width = pageWidth;
+        exportCanvas.height = pageHeight;
+        const ctx = exportCanvas.getContext('2d');
+        
+        // White background
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, pageWidth, pageHeight);
+        
+        // Draw each panel
+        const cols = 3;
+        const rows = 2;
+        const panelW = (pageWidth - 60) / cols;
+        const panelH = (pageHeight - 60) / rows;
+        
+        for (let i = 0; i < panels.length; i++) {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const x = 15 + col * (panelW + 12);
+          const y = 15 + row * (panelH + 12);
+          
+          // Panel border
+          ctx.strokeStyle = '#1a1a1a';
+          ctx.lineWidth = 4;
+          ctx.strokeRect(x, y, panelW, panelH);
+          
+          // Draw image if present
+          const panel = panels[i];
+          if (panel.hasImage && panel.image.src) {
+            ctx.drawImage(panel.image, x, y, panelW, panelH);
+          }
+          
+          // Draw canvas content
+          ctx.drawImage(panel.canvas, x, y, panelW, panelH);
+        }
+        
+        const link = document.createElement('a');
+        link.download = 'my-comic-page.png';
+        link.href = exportCanvas.toDataURL('image/png');
+        link.click();
+        
+        playSound('pop');
+        updateStatus('✅ PNG exported successfully!');
+      } catch (e) {
+        console.error('Export error:', e);
+        updateStatus('❌ Error exporting PNG: ' + e.message);
+      }
+    }
+
+    // Export Video using MediaRecorder
+    async function exportVideo() {
+      const progressEl = document.getElementById('export-progress');
+      const fillEl = document.getElementById('progress-fill');
+      
+      progressEl.classList.add('active');
+      updateStatus('Recording animated video...');
+      
+      try {
+        // Create recording canvas
+        const recCanvas = document.createElement('canvas');
+        recCanvas.width = 1200;
+        recCanvas.height = 900;
+        const recCtx = recCanvas.getContext('2d');
+        
+        // Get stream from canvas
+        const stream = recCanvas.captureStream(30);
+        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        
+        const chunks = [];
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+        
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.download = 'my-animated-comic.webm';
+          link.href = url;
+          link.click();
+          
+          progressEl.classList.remove('active');
+          fillEl.style.width = '0%';
+          playSound('pop');
+          updateStatus('✅ Video exported successfully!');
+        };
+        
+        recorder.start();
+        
+        // Animate and record for 5 seconds
+        const duration = 5000;
+        const startTime = Date.now();
+        
+        function recordFrame() {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(elapsed / duration, 1);
+          
+          fillEl.style.width = `${progress * 100}%`;
+          
+          // Draw current state to recording canvas
+          recCtx.fillStyle = 'white';
+          recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
+          
+          const cols = 3;
+          const rows = 2;
+          const panelW = (recCanvas.width - 60) / cols;
+          const panelH = (recCanvas.height - 60) / rows;
+          
+          for (let i = 0; i < panels.length; i++) {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const x = 15 + col * (panelW + 12);
+            const y = 15 + row * (panelH + 12);
+            
+            recCtx.strokeStyle = '#1a1a1a';
+            recCtx.lineWidth = 4;
+            recCtx.strokeRect(x, y, panelW, panelH);
+            
+            const panel = panels[i];
+            if (panel.hasImage && panel.image.src) {
+              // Apply Ken Burns effect during recording
+              const scale = 1 + Math.sin(elapsed / 2000) * 0.05;
+              recCtx.save();
+              recCtx.translate(x + panelW/2, y + panelH/2);
+              recCtx.scale(scale, scale);
+              recCtx.drawImage(panel.image, -panelW/2, -panelH/2, panelW, panelH);
+              recCtx.restore();
+            }
+            
+            recCtx.drawImage(panel.canvas, x, y, panelW, panelH);
+          }
+          
+          if (elapsed < duration) {
+            requestAnimationFrame(recordFrame);
+          } else {
+            recorder.stop();
+          }
+        }
+        
+        // Apply animations during recording
+        applyAnimations();
+        
+        setTimeout(() => recordFrame(), 100);
+        
+      } catch (e) {
+        console.error('Video export error:', e);
+        progressEl.classList.remove('active');
+        updateStatus('❌ Error exporting video: ' + e.message);
+      }
+    }
+
+    // Clear all panels
+    function clearAllPanels() {
+      if (!confirm('Clear all panels? This cannot be undone.')) return;
+      
+      panels.forEach(panel => {
+        panel.ctx.clearRect(0, 0, panel.canvas.width, panel.canvas.height);
+        panel.image.src = '';
+        panel.hasImage = false;
+        panel.element.classList.remove('has-image');
+        
+        // Remove overlays
+        panel.bubbles.forEach(b => b.remove());
+        panel.captions.forEach(c => c.remove());
+        panel.sfx.forEach(s => s.remove());
+        panel.bubbles = [];
+        panel.captions = [];
+        panel.sfx = [];
+      });
+      
+      stopAllAnimations();
+      playSound('pop');
+      updateStatus('🗑️ All panels cleared');
+    }
+
+    // Status bar updates
+    function updateStatus(message) {
+      document.getElementById('status-bar').textContent = message;
+    }
+
+    // Tool selection
+    document.getElementById('tool-brush').addEventListener('click', () => {
+      currentTool = 'brush';
+      playSound('pop');
+    });
+
+    document.getElementById('tool-eraser').addEventListener('click', () => {
+      currentTool = 'eraser';
+      playSound('pop');
+    });
+
+    // Main buttons
+    document.getElementById('bring-to-life').addEventListener('click', openAnimationModal);
+    document.getElementById('stop-animation').addEventListener('click', () => {
+      stopAllAnimations();
+      updateStatus('⏹️ Animations stopped');
+    });
+    document.getElementById('export-png').addEventListener('click', exportPNG);
+    document.getElementById('export-video').addEventListener('click', exportVideo);
+    document.getElementById('clear-all').addEventListener('click', clearAllPanels);
+
+    // Initialize
+    initComicGrid();
+    updateStatus('Ready to create! Draw in any panel or drop an image.');
+  </script>
+</body>
+</html>
