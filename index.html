@@ -467,6 +467,7 @@
     <div class="toolbar-group">
       <button class="btn btn-secondary btn-small" id="tool-brush">✏️ Brush</button>
       <button class="btn btn-secondary btn-small" id="tool-eraser">🧽 Eraser</button>
+      <button class="btn btn-primary btn-small" id="import-image">📁 Import Image</button>
       <button class="btn btn-secondary btn-small" id="clear-all">🗑️ Clear All</button>
     </div>
 
@@ -1263,6 +1264,27 @@
     document.getElementById('tool-eraser').addEventListener('click', () => {
       currentTool = 'eraser';
       playSound('pop');
+    });
+
+    // Import image button
+    document.getElementById('import-image').addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e) => {
+        if (e.target.files.length > 0) {
+          // Find first empty panel or use panel 1
+          let targetIndex = 0;
+          for (let i = 0; i < panels.length; i++) {
+            if (!panels[i].hasImage && panels[i].bubbles.length === 0) {
+              targetIndex = i;
+              break;
+            }
+          }
+          loadImageIntoPanel(e.target.files[0], panels[targetIndex].image, targetIndex);
+        }
+      };
+      input.click();
     });
 
     // Main buttons
