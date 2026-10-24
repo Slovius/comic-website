@@ -156,6 +156,12 @@
 
     .panel:hover { box-shadow: inset 0 0 20px rgba(0,0,0,0.1); }
 
+    .panel.selected {
+      outline: 4px solid var(--accent-blue);
+      outline-offset: -4px;
+      z-index: 5;
+    }
+
     .panel canvas {
       position: absolute;
       top: 0;
@@ -468,6 +474,7 @@
       <button class="btn btn-secondary btn-small" id="tool-brush">✏️ Brush</button>
       <button class="btn btn-secondary btn-small" id="tool-eraser">🧽 Eraser</button>
       <button class="btn btn-primary btn-small" id="import-image">📁 Import Image</button>
+      <button class="btn btn-secondary btn-small" id="undo-btn">↩️ Undo</button>
       <button class="btn btn-secondary btn-small" id="clear-all">🗑️ Clear All</button>
     </div>
 
@@ -548,9 +555,14 @@
     const PANEL_COUNT = 6;
     let panels = [];
     let currentTool = 'brush';
+    let selectedPanelIndex = -1;
     let isDrawing = false;
     let lastPos = { x: 0, y: 0 };
     let audioCtx = null;
+    
+    // Undo history
+    let undoStack = [];
+    const MAX_UNDO = 20;
 
     // Initialize comic grid
     function initComicGrid() {
@@ -646,44 +658,99 @@
       return btn;
     }
 
-    // Drawing functionality
-    function setupDrawingEvents(panelEl, canvas, ctx) {
-      panelEl.addEventListener('mousedown', startDraw);
-      panelEl.addEventListener('mousemove', draw);
-      panelEl.addEventListener('mouseup', endDraw);
-      panelEl.addEventListener('mouseleave', endDraw);
+    // Panel selection
+    function selectPanel(index) {
+      if (selectedPanelIndex === index) return;
       
-      // Touch support
-      panelEl.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        const touch = e.touches[0];
-        startDraw({ target: canvas, offsetX: touch.clientX - canvas.getBoundingClientRect().left, offsetY: touch.clientY - canvas.getBoundingClientRect().top });
-      });
+      // Deselect previous
+      if (selectedPanelIndex >= 0 && panels[selectedPanelIndex]) {
+        panels[selectedPanelIndex].element.classList.remove('selected');
+      }
       
-      panelEl.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        const touch = e.touches[0];
-        draw({ target: canvas, offsetX: touch.clientX - canvas.getBoundingClientRect().left, offsetY: touch.clientY - canvas.getBoundingClientRect().top });
-      });
-      
-      panelEl.addEventListener('touchend', endDraw);
+      selectedPanelIndex = index;
+      panels[index].element.classList.add('selected');
+      updateStatus(`Panel ${index + 1} selected`);
+    }
 
-      function startDraw(e) {
+    // Undo functionality
+    function saveUndoState(panelIndex, action) {
+      const panel = panels[panelIndex];
+      
+      undoStack.push({
+        panelIndex: panelIndex,
+        action: action,
+        canvasData: panel.canvas.toDataURL(),
+        imageSrc: panel.image.src,
+        hasImage: panel.hasImage
+      });
+      
+      // Keep only last 20 states
+      if (undoStack.length > MAX_UNDO) {
+        undoStack.shift();
+      }
+    }
+
+    function undo() {
+      if (undoStack.length === 0) {
+        updateStatus('Nothing to undo');
+        return;
+      }
+      
+      const state = undoStack.pop();
+      const panel = panels[state.panelIndex];
+      
+      // Restore canvas
+      const img = new Image();
+      img.onload = () => {
+        panel.ctx.clearRect(0, 0, panel.canvas.width, panel.canvas.height);
+        panel.ctx.drawImage(img, 0, 0);
+      };
+      img.src = state.canvasData;
+      
+      // Restore image
+      if (state.hasImage) {
+        panel.image.src = state.imageSrc;
+        panel.hasImage = true;
+        panel.element.classList.add('has-image');
+      } else {
+        panel.image.src = '';
+        panel.hasImage = false;
+        panel.element.classList.remove('has-image');
+      }
+      
+      playSound('pop');
+      updateStatus(`↩️ Undo: ${state.action} on Panel ${state.panelIndex + 1}`);
+    }
+
+    // Drawing functionality with panel selection
+    function setupDrawingEvents(panelEl, canvas, ctx) {
+      let drawStarted = false;
+      const panelIndex = parseInt(panelEl.dataset.index);
+
+      panelEl.addEventListener('mousedown', (e) => {
         if (e.target.closest('.panel-controls') || e.target.classList.contains('speech-bubble') || 
             e.target.classList.contains('caption-box') || e.target.classList.contains('sfx-badge')) return;
         
+        // Select this panel
+        selectPanel(panelIndex);
+        
         isDrawing = true;
+        drawStarted = false;
         const rect = canvas.getBoundingClientRect();
         lastPos.x = (e.offsetX / rect.width) * canvas.width;
         lastPos.y = (e.offsetY / rect.height) * canvas.height;
-      }
+      });
 
-      function draw(e) {
+      panelEl.addEventListener('mousemove', (e) => {
         if (!isDrawing) return;
         
         const rect = canvas.getBoundingClientRect();
         const x = (e.offsetX / rect.width) * canvas.width;
         const y = (e.offsetY / rect.height) * canvas.height;
+
+        // Only start drawing if mouse moved significantly
+        if (!drawStarted && Math.abs(x - lastPos.x) < 2 && Math.abs(y - lastPos.y) < 2) return;
+        drawStarted = true;
 
         ctx.beginPath();
         ctx.moveTo(lastPos.x, lastPos.y);
@@ -705,11 +772,22 @@
 
         lastPos.x = x;
         lastPos.y = y;
-      }
+      });
 
-      function endDraw() {
+      panelEl.addEventListener('mouseup', () => {
+        if (isDrawing && drawStarted) {
+          // Save state for undo after drawing completes
+          saveUndoState(panelIndex, 'draw');
+        }
         isDrawing = false;
-      }
+      });
+
+      panelEl.addEventListener('mouseleave', () => {
+        if (isDrawing && drawStarted) {
+          saveUndoState(panelIndex, 'draw');
+        }
+        isDrawing = false;
+      });
     }
 
     // Drag and drop image support
@@ -761,6 +839,7 @@
 
     // Speech bubbles
     function addSpeechBubble(panelIndex) {
+      saveUndoState(panelIndex, 'speech bubble');
       const panel = panels[panelIndex];
       const bubble = document.createElement('div');
       bubble.className = 'speech-bubble';
@@ -779,6 +858,7 @@
 
     // Caption boxes
     function addCaptionBox(panelIndex) {
+      saveUndoState(panelIndex, 'caption');
       const panel = panels[panelIndex];
       const caption = document.createElement('div');
       caption.className = 'caption-box';
@@ -795,6 +875,7 @@
 
     // Sound effect badges
     function addSoundEffect(panelIndex) {
+      saveUndoState(panelIndex, 'sound effect');
       const panel = panels[panelIndex];
       const sfxTexts = ['POW!', 'ZAP!', 'BOOM!', 'WHAM!', 'CRASH!', 'BANG!'];
       const colors = ['', 'pink', 'orange', 'green'];
@@ -1266,21 +1347,24 @@
       playSound('pop');
     });
 
-    // Import image button
+    // Import image button - uses selected panel or finds empty one
     document.getElementById('import-image').addEventListener('click', () => {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
       input.onchange = (e) => {
         if (e.target.files.length > 0) {
-          // Find first empty panel or use panel 1
-          let targetIndex = 0;
-          for (let i = 0; i < panels.length; i++) {
-            if (!panels[i].hasImage && panels[i].bubbles.length === 0) {
-              targetIndex = i;
-              break;
+          // Use selected panel, or find first empty one
+          let targetIndex = selectedPanelIndex;
+          if (targetIndex < 0) {
+            for (let i = 0; i < panels.length; i++) {
+              if (!panels[i].hasImage && panels[i].bubbles.length === 0) {
+                targetIndex = i;
+                break;
+              }
             }
           }
+          saveUndoState(targetIndex, 'import');
           loadImageIntoPanel(e.target.files[0], panels[targetIndex].image, targetIndex);
         }
       };
@@ -1296,6 +1380,26 @@
     document.getElementById('export-png').addEventListener('click', exportPNG);
     document.getElementById('export-video').addEventListener('click', exportVideo);
     document.getElementById('clear-all').addEventListener('click', clearAllPanels);
+    
+    // Undo button
+    document.getElementById('undo-btn').addEventListener('click', undo);
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      // Ctrl+Z or Cmd+Z for undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        undo();
+      }
+      
+      // Number keys 1-6 to select panels
+      if (e.key >= '1' && e.key <= '6') {
+        const panelNum = parseInt(e.key) - 1;
+        if (panelNum < panels.length) {
+          selectPanel(panelNum);
+        }
+      }
+    });
 
     // Initialize
     initComicGrid();
